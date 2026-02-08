@@ -1,141 +1,186 @@
+import io
 import logging
+import re
 from datetime import datetime
 
-from bs4 import BeautifulSoup
+import pdfplumber
 
 from database.models import InjuryReport
 from scrapers.base import BaseScraper
 
 logger = logging.getLogger(__name__)
 
-# NBA.com injury report page
-NBA_INJURY_URL = "https://www.nba.com/players/injuries"
+# NBA publishes official injury reports as PDFs on this CDN path.
+# The filename includes the date and time of the report.
+NBA_INJURY_PDF_BASE = "https://ak-static.cms.nba.com/referee/injury"
 
-# NBA stats API endpoint (JSON, avoids need for Selenium)
-NBA_API_URL = "https://stats.nba.com/stats/playerindex"
+# Common report times (ET) published each day
+REPORT_TIMES = [
+    "05_00PM", "04_00PM", "03_00PM", "02_00PM",
+    "01_30PM", "01_00PM", "12_00PM",
+]
+
+VALID_STATUSES = {"Out", "Questionable", "Probable", "Doubtful", "Available"}
 
 
 class NBAOfficialScraper(BaseScraper):
-    """Scrapes injury reports from NBA.com."""
+    """Scrapes injury reports from the official NBA injury report PDFs."""
 
     SOURCE = "nba.com"
     REQUIRED_FIELDS = ["player_name", "team", "injury_status"]
 
-    def __init__(self):
-        super().__init__()
-        # NBA.com requires specific headers for API access
-        self.session.headers.update({
-            "Referer": "https://www.nba.com/",
-            "Origin": "https://www.nba.com",
-        })
-
     def scrape(self):
-        """Scrape NBA.com injury report page.
-
-        Tries the HTML page first. NBA.com heavily uses JavaScript rendering,
-        so this may return incomplete data without Selenium.
-        """
+        """Download and parse the latest NBA injury report PDF."""
         reports = []
 
-        logger.info("Fetching NBA.com injury report page...")
+        logger.info("Fetching NBA official injury report PDF...")
         self._rate_limit()
-        response = self.fetch(NBA_INJURY_URL)
 
-        if response is None:
-            logger.error("Failed to fetch NBA.com injury page.")
+        pdf_bytes = self._fetch_latest_pdf()
+        if pdf_bytes is None:
+            logger.error("Failed to fetch any NBA injury report PDF.")
             return reports
 
         try:
-            reports = self._parse_injury_page(response.text)
+            reports = self._parse_pdf(pdf_bytes)
             logger.info(f"Parsed {len(reports)} injury reports from NBA.com")
         except Exception as e:
-            logger.error(f"Error parsing NBA.com injury page: {e}")
+            logger.error(f"Error parsing NBA injury report PDF: {e}")
 
         return reports
 
-    def _parse_injury_page(self, html):
-        """Parse the NBA.com injury report HTML page."""
-        soup = BeautifulSoup(html, "lxml")
+    def _fetch_latest_pdf(self):
+        """Try fetching the most recent injury report PDF for today.
+
+        Uses HEAD requests to quickly probe URLs, then downloads the first
+        match. Tries today and the previous two days with common report times.
+        Returns the PDF content as bytes, or None if all attempts fail.
+        """
+        from datetime import timedelta
+
+        today = datetime.utcnow()
+        dates_to_try = [
+            (today - timedelta(days=d)).strftime("%Y-%m-%d")
+            for d in range(3)
+        ]
+
+        for date_str in dates_to_try:
+            for time_str in REPORT_TIMES:
+                url = (
+                    f"{NBA_INJURY_PDF_BASE}/"
+                    f"Injury-Report_{date_str}_{time_str}.pdf"
+                )
+                # Quick HEAD check to avoid slow retries on missing PDFs
+                try:
+                    head = self.session.head(url, timeout=5)
+                    if head.status_code != 200:
+                        continue
+                except Exception:
+                    continue
+
+                response = self.fetch(url)
+                if response is not None:
+                    content_type = response.headers.get("content-type", "")
+                    if "pdf" in content_type or len(response.content) > 1000:
+                        logger.info(f"Found injury report: {url}")
+                        return response.content
+            logger.debug(f"No report found for {date_str}, trying earlier date...")
+
+        return None
+
+    def _parse_pdf(self, pdf_bytes):
+        """Extract injury data from the PDF bytes."""
         reports = []
+        current_team = ""
 
-        # NBA.com renders injury data in tables/divs with player cards
-        # The exact selectors depend on the current page structure
-        # Try multiple selector strategies
-
-        # Strategy 1: Look for injury table rows
-        tables = soup.find_all("table")
-        for table in tables:
-            rows = table.find_all("tr")
-            for row in rows:
-                cells = row.find_all("td")
-                if len(cells) >= 3:
-                    report = self._parse_table_row(cells)
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text()
+                if not text:
+                    continue
+                for line in text.split("\n"):
+                    line = line.strip()
+                    result = self._parse_line(line, current_team)
+                    if result is None:
+                        continue
+                    report, team = result
+                    if team:
+                        current_team = team
                     if report and self._validate_report(report, self.REQUIRED_FIELDS):
                         reports.append(report)
 
-        # Strategy 2: Look for player injury cards/divs
         if not reports:
-            injury_sections = soup.find_all(
-                "div", class_=lambda c: c and "injury" in c.lower()
-            ) or soup.find_all(
-                "section", class_=lambda c: c and "injury" in c.lower()
-            )
-            for section in injury_sections:
-                report = self._parse_injury_section(section)
-                if report and self._validate_report(report, self.REQUIRED_FIELDS):
-                    reports.append(report)
-
-        if not reports:
-            logger.warning(
-                "No injury data found on NBA.com. The page likely requires "
-                "JavaScript rendering (Selenium) or the page structure has changed."
-            )
+            logger.warning("No injury data found in the NBA PDF.")
 
         return reports
 
-    def _parse_table_row(self, cells):
-        """Parse a table row into a report dict."""
-        try:
-            return {
-                "player_name": cells[0].get_text(strip=True),
-                "team": cells[1].get_text(strip=True) if len(cells) > 1 else "",
-                "injury_status": cells[2].get_text(strip=True) if len(cells) > 2 else "",
-                "injury_description": cells[3].get_text(strip=True) if len(cells) > 3 else "",
-                "report_date": datetime.utcnow(),
-                "source": self.SOURCE,
-            }
-        except (IndexError, AttributeError) as e:
-            logger.debug(f"Failed to parse table row: {e}")
+    def _parse_line(self, line, current_team):
+        """Parse a single line from the extracted PDF text.
+
+        Returns (report_dict, team) or None if the line isn't a player entry.
+        """
+        if not line:
+            return None
+        # Skip headers and page footers
+        if line.startswith("Injury Report:") or line.startswith("GameDate"):
+            return None
+        if re.match(r"^Page\s*\d+\s*of\s*\d+$", line):
             return None
 
-    def _parse_injury_section(self, section):
-        """Parse an injury card/section div into a report dict."""
-        try:
-            text_content = section.get_text(" ", strip=True)
-            # Attempt to extract structured data from text
-            # This is a best-effort parse; exact selectors depend on page structure
-            name_elem = section.find(["h3", "h4", "a", "span"])
-            player_name = name_elem.get_text(strip=True) if name_elem else ""
+        for status in VALID_STATUSES:
+            if f" {status} " in line or line.endswith(f" {status}"):
+                idx = line.rfind(f" {status}")
+                before = line[:idx].strip()
+                reason = line[idx + len(status) + 1:].strip()
 
-            return {
-                "player_name": player_name,
-                "team": "",
-                "injury_status": self._extract_status(text_content),
-                "injury_description": text_content[:200],
-                "report_date": datetime.utcnow(),
-                "source": self.SOURCE,
-            }
-        except Exception as e:
-            logger.debug(f"Failed to parse injury section: {e}")
-            return None
+                # Player names appear as "Last,First"
+                name_match = re.search(
+                    r"([A-Za-z\'\-\.]+(?:III|II|IV|Jr|Sr)?),\s*([A-Za-z\'\-\.]+)",
+                    before,
+                )
+                if not name_match:
+                    return None
 
-    def _extract_status(self, text):
-        """Extract injury status from text content."""
-        text_lower = text.lower()
-        for status in ["out", "doubtful", "questionable", "probable", "available"]:
-            if status in text_lower:
-                return status.capitalize()
-        return "Unknown"
+                # Check for team name (CamelCase) before the player name
+                name_start = before.find(name_match.group(0))
+                prefix = before[:name_start].strip()
+
+                team = current_team
+                team_match = re.search(r"([A-Z][a-z]+(?:[A-Z][a-z]+)+)", prefix)
+                if team_match:
+                    team = team_match.group(1)
+
+                player_name = f"{name_match.group(2)} {name_match.group(1)}"
+                description = self._clean_reason(reason)
+
+                report = {
+                    "player_name": player_name,
+                    "team": self._format_team(team),
+                    "injury_status": status,
+                    "injury_description": description[:200],
+                    "report_date": datetime.utcnow(),
+                    "source": self.SOURCE,
+                }
+                return report, team_match.group(1) if team_match else None
+
+        return None
+
+    def _clean_reason(self, reason):
+        """Clean up the reason string from the PDF."""
+        if not reason:
+            return ""
+        # Remove "Injury/Illness-" prefix for cleaner descriptions
+        reason = re.sub(r"^Injury/Illness-", "", reason)
+        # Replace semicolons with more readable separators
+        reason = reason.replace(";", " - ")
+        return reason.strip()
+
+    def _format_team(self, team):
+        """Convert CamelCase team name to readable format."""
+        if not team:
+            return ""
+        # Insert spaces before capital letters: "WashingtonWizards" -> "Washington Wizards"
+        return re.sub(r"(?<=[a-z])(?=[A-Z])", " ", team)
 
     def save_reports(self, db_session, reports):
         """Save scraped reports to the injury_reports table."""
