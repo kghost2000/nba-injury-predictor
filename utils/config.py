@@ -12,6 +12,7 @@ DATABASE_URL = f"sqlite:///{_project_root / DATABASE_PATH}"
 
 # Anthropic (Phase 4-5)
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
 
 # Twitter (Phase 5)
 TWITTER_BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN", "")
@@ -22,6 +23,15 @@ TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET", "")
 REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID", "")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET", "")
 REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "nba-injury-scraper/1.0")
+
+# Nitter instances (Phase 5 - Twitter via Nitter)
+NITTER_INSTANCES = [
+    "https://nitter.net",
+    "https://nitter.privacydev.net",
+    "https://nitter.poast.org",
+    "https://nitter.woodland.cafe",
+    "https://nitter.rawbit.ninja",
+]
 
 # Scraper settings
 REQUEST_DELAY_MIN = 1.0
