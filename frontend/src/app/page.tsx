@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { getTodayPredictions, type Prediction } from "@/lib/api";
 import PredictionCard from "@/components/PredictionCard";
 
 export default function Home() {
+  return (
+    <Suspense fallback={<div className="text-center py-12 text-gray-500">Loading...</div>}>
+      <HomeContent />
+    </Suspense>
+  );
+}
+
+function HomeContent() {
   const searchParams = useSearchParams();
   const tier = searchParams.get("tier") || undefined;
   const [predictions, setPredictions] = useState<Prediction[]>([]);
