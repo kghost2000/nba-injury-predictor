@@ -1,0 +1,15 @@
+# NBA Injury Risk - Production Cron Jobs
+# All times in UTC. Adjust for your server timezone.
+# ET = UTC-5 (winter) or UTC-4 (summer DST)
+#
+# Install: crontab -e, then paste these lines
+# Logs go to /var/log/nba/ — create with: sudo mkdir -p /var/log/nba
+
+# 5 AM ET (10:00 UTC): Scrape latest game logs
+0 10 * * * cd /opt/nba-injury-scraper && conda run -n nba python main.py --outcomes 2025-26 >> /var/log/nba/outcomes.log 2>&1
+
+# 6 AM ET (11:00 UTC): Run batch predictions
+0 11 * * * cd /opt/nba-injury-scraper && conda run -n nba python -m pipeline.daily_predictions >> /var/log/nba/predictions.log 2>&1
+
+# 10 PM ET (03:00 UTC+1): Validate 3-day-old predictions
+0 3 * * * cd /opt/nba-injury-scraper && conda run -n nba python -m pipeline.validate_outcomes >> /var/log/nba/validate.log 2>&1

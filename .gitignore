@@ -34,3 +34,13 @@ geckodriver
 
 # Logs
 *.log
+
+# Large cached data
+models/saved/injury_risk/dataset_cache.pkl
+
+# DB dumps
+nba_dump.sql
+
+# Frontend build
+frontend/node_modules/
+frontend/.next/

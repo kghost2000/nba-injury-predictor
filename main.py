@@ -173,6 +173,48 @@ def run_injury_risk():
     train_and_evaluate()
 
 
+def run_predict(date=None):
+    """Run daily batch predictions."""
+    from pipeline.daily_predictions import run as run_predictions
+
+    logger.info("Initializing database...")
+    init_db()
+    run_predictions(prediction_date=date)
+
+
+def run_validate(date=None, lag=3, threshold=0.07):
+    """Validate predictions against actual outcomes."""
+    from pipeline.validate_outcomes import run as run_validation
+
+    logger.info("Initializing database...")
+    init_db()
+    run_validation(prediction_date=date, lag_days=lag, threshold=threshold)
+
+
+def run_migrate():
+    """Run database migrations (create prediction tracking tables)."""
+    from pathlib import Path
+
+    from sqlalchemy import text
+
+    from database.schema import get_engine
+
+    engine = get_engine()
+    migrations_dir = Path(__file__).parent / "database" / "migrations"
+
+    with engine.begin() as conn:
+        for sql_file in sorted(migrations_dir.glob("*.sql")):
+            logger.info(f"Running migration: {sql_file.name}")
+            sql = sql_file.read_text()
+            for statement in sql.split(";"):
+                statement = statement.strip()
+                if statement:
+                    conn.execute(text(statement))
+            logger.info(f"  Completed: {sql_file.name}")
+
+    logger.info("All migrations complete.")
+
+
 def run_all():
     """Run all scrapers (structured + unstructured)."""
     structured = run_structured_scrapers()
@@ -225,10 +267,36 @@ def main():
         "--injury-risk", action="store_true",
         help="Train injury risk early warning models",
     )
+    arg_parser.add_argument(
+        "--predict", action="store_true",
+        help="Run daily batch predictions (writes to daily_predictions table)",
+    )
+    arg_parser.add_argument(
+        "--predict-date", type=str, metavar="DATE",
+        help="Prediction date (YYYY-MM-DD) for --predict. Defaults to today.",
+    )
+    arg_parser.add_argument(
+        "--validate", action="store_true",
+        help="Validate predictions against actual outcomes",
+    )
+    arg_parser.add_argument(
+        "--validate-date", type=str, metavar="DATE",
+        help="Prediction date to validate (YYYY-MM-DD). Defaults to 3 days ago.",
+    )
+    arg_parser.add_argument(
+        "--migrate", action="store_true",
+        help="Run database migrations (create prediction tracking tables)",
+    )
 
     args = arg_parser.parse_args()
 
-    if args.injury_risk:
+    if args.migrate:
+        run_migrate()
+    elif args.predict:
+        run_predict(date=args.predict_date)
+    elif args.validate:
+        run_validate(date=args.validate_date)
+    elif args.injury_risk:
         run_injury_risk()
     elif args.train:
         run_train()
