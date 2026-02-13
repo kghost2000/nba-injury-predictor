@@ -1,12 +1,37 @@
-import { getPerformanceSummary, getPerformanceHistory } from "@/lib/api";
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  getPerformanceSummary,
+  getPerformanceHistory,
+  type PerformanceSummary,
+  type BatchMetric,
+} from "@/lib/api";
 import MetricsDisplay from "@/components/MetricsDisplay";
 import PerformanceChart from "@/components/PerformanceChart";
 
-export default async function PerformancePage() {
-  const [summary, history] = await Promise.all([
-    getPerformanceSummary(30),
-    getPerformanceHistory(30),
-  ]);
+export default function PerformancePage() {
+  const [summary, setSummary] = useState<PerformanceSummary | null>(null);
+  const [history, setHistory] = useState<BatchMetric[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([getPerformanceSummary(30), getPerformanceHistory(30)])
+      .then(([s, h]) => {
+        setSummary(s);
+        setHistory(h);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <div className="text-center py-12 text-gray-500">Loading performance data...</div>;
+  }
+
+  if (!summary) {
+    return <div className="text-center py-12 text-gray-500">Could not load performance data.</div>;
+  }
 
   return (
     <div>
@@ -32,7 +57,6 @@ export default async function PerformancePage() {
           </div>
         )}
 
-        {/* Recent batches table */}
         {history.length > 0 && (
           <div className="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden">
             <table className="w-full text-sm">

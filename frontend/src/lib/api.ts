@@ -69,7 +69,7 @@ export interface PerformanceSummary {
 }
 
 async function fetchAPI<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, { next: { revalidate: 300 } });
+  const res = await fetch(`${API_URL}${path}`);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();
 }

@@ -1,4 +1,8 @@
-import { getPlayerDetail } from "@/lib/api";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { getPlayerDetail, type PlayerDetail } from "@/lib/api";
 
 function formatFeatureName(name: string): string {
   return name
@@ -16,13 +20,26 @@ const tierColors: Record<string, string> = {
   low: "text-green-400",
 };
 
-export default async function PlayerPage({
-  params,
-}: {
-  params: { id: string };
-}) {
-  const playerId = parseInt(params.id, 10);
-  const player = await getPlayerDetail(playerId);
+export default function PlayerPage() {
+  const params = useParams();
+  const playerId = parseInt(params.id as string, 10);
+  const [player, setPlayer] = useState<PlayerDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getPlayerDetail(playerId)
+      .then(setPlayer)
+      .catch(() => setPlayer(null))
+      .finally(() => setLoading(false));
+  }, [playerId]);
+
+  if (loading) {
+    return <div className="text-center py-12 text-gray-500">Loading player data...</div>;
+  }
+
+  if (!player) {
+    return <div className="text-center py-12 text-gray-500">Player not found.</div>;
+  }
 
   return (
     <div>

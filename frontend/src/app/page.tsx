@@ -1,17 +1,30 @@
-import { getTodayPredictions } from "@/lib/api";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { getTodayPredictions, type Prediction } from "@/lib/api";
 import PredictionCard from "@/components/PredictionCard";
 
-export default async function Home({
-  searchParams,
-}: {
-  searchParams: { tier?: string };
-}) {
-  const tier = searchParams.tier || undefined;
-  const predictions = await getTodayPredictions(tier);
+export default function Home() {
+  const searchParams = useSearchParams();
+  const tier = searchParams.get("tier") || undefined;
+  const [predictions, setPredictions] = useState<Prediction[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getTodayPredictions(tier)
+      .then(setPredictions)
+      .catch(() => setPredictions([]))
+      .finally(() => setLoading(false));
+  }, [tier]);
 
   const highRisk = predictions.filter((p) => p.risk_tier === "high");
   const mediumRisk = predictions.filter((p) => p.risk_tier === "medium");
   const lowRisk = predictions.filter((p) => p.risk_tier === "low");
+
+  if (loading) {
+    return <div className="text-center py-12 text-gray-500">Loading predictions...</div>;
+  }
 
   return (
     <div>
@@ -54,7 +67,6 @@ export default async function Home({
         </div>
       ) : (
         <>
-          {/* High risk section */}
           {(!tier || tier === "high") && highRisk.length > 0 && (
             <section className="mb-8">
               <h2 className="text-lg font-semibold text-red-400 mb-3">
@@ -68,7 +80,6 @@ export default async function Home({
             </section>
           )}
 
-          {/* Medium risk section */}
           {(!tier || tier === "medium") && mediumRisk.length > 0 && (
             <section className="mb-8">
               <h2 className="text-lg font-semibold text-yellow-400 mb-3">
@@ -82,7 +93,6 @@ export default async function Home({
             </section>
           )}
 
-          {/* Low risk section (collapsed by default) */}
           {tier === "low" && lowRisk.length > 0 && (
             <section className="mb-8">
               <h2 className="text-lg font-semibold text-green-400 mb-3">
