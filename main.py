@@ -119,6 +119,20 @@ def run_backfill(season, interval_days=1):
     return saved
 
 
+def run_outcomes(season):
+    """Fetch game outcomes and player box score stats for a season."""
+    from scrapers.structured.game_outcomes import fetch_season
+
+    logger.info("Initializing database...")
+    init_db()
+
+    with get_session() as session:
+        saved = fetch_season(session, season)
+
+    logger.info(f"Game outcomes finished. {saved} records saved.")
+    return saved
+
+
 def run_seed():
     """Seed the reporters table with known NBA insiders."""
     from database.seed import seed_reporters
@@ -128,6 +142,35 @@ def run_seed():
 
     with get_session() as session:
         seed_reporters(session)
+
+
+def run_rebuild():
+    """Wipe and rebuild core NBA stats tables from the NBA Stats API."""
+    from scrapers.structured.nba_stats_rebuild import rebuild_all
+
+    logger.info("Initializing database...")
+    init_db()
+
+    with get_session() as session:
+        rebuild_all(session)
+
+
+def run_train():
+    """Train game availability prediction models."""
+    from models.game_availability import train_and_evaluate
+
+    logger.info("Initializing database...")
+    init_db()
+    train_and_evaluate()
+
+
+def run_injury_risk():
+    """Train injury risk early warning models."""
+    from models.injury_risk import train_and_evaluate
+
+    logger.info("Initializing database...")
+    init_db()
+    train_and_evaluate()
 
 
 def run_all():
@@ -166,10 +209,34 @@ def main():
         "--interval", type=int, default=1,
         help="Days between samples when backfilling (default: 1 = daily)",
     )
+    arg_parser.add_argument(
+        "--outcomes", type=str, metavar="SEASON",
+        help="Fetch game outcomes and player stats for a season (e.g. 2024-25)",
+    )
+    arg_parser.add_argument(
+        "--rebuild", action="store_true",
+        help="Wipe and rebuild core NBA stats tables (season, player, game, etc.) from the NBA Stats API",
+    )
+    arg_parser.add_argument(
+        "--train", action="store_true",
+        help="Train game availability prediction models",
+    )
+    arg_parser.add_argument(
+        "--injury-risk", action="store_true",
+        help="Train injury risk early warning models",
+    )
 
     args = arg_parser.parse_args()
 
-    if args.backfill:
+    if args.injury_risk:
+        run_injury_risk()
+    elif args.train:
+        run_train()
+    elif args.rebuild:
+        run_rebuild()
+    elif args.outcomes:
+        run_outcomes(args.outcomes)
+    elif args.backfill:
         run_backfill(args.backfill, interval_days=args.interval)
     elif args.seed:
         run_seed()

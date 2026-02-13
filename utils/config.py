@@ -7,8 +7,10 @@ _project_root = Path(__file__).resolve().parent.parent
 load_dotenv(_project_root / ".env")
 
 # Database
-DATABASE_PATH = os.getenv("DATABASE_PATH", "data/nba_injuries.db")
-DATABASE_URL = f"sqlite:///{_project_root / DATABASE_PATH}"
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    f"sqlite:///{_project_root / 'data/nba_injuries.db'}",
+)
 
 # Anthropic (Phase 4-5)
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")

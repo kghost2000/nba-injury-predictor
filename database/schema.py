@@ -18,9 +18,10 @@ def get_engine():
     """Get or create the SQLAlchemy engine."""
     global _engine
     if _engine is None:
-        # Ensure the data directory exists
-        db_path = DATABASE_URL.replace("sqlite:///", "")
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        if DATABASE_URL.startswith("sqlite"):
+            # Ensure the data directory exists for SQLite
+            db_path = DATABASE_URL.replace("sqlite:///", "")
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
         _engine = create_engine(DATABASE_URL, echo=False)
         logger.info(f"Database engine created: {DATABASE_URL}")

@@ -59,6 +59,46 @@ class GameOutcome(Base):
         return f"<GameOutcome(player={self.player_name}, date={self.game_date}, played={self.did_play})>"
 
 
+class PlayerGameStats(Base):
+    """Full box score stats for each player-game from NBA Stats API."""
+
+    __tablename__ = "player_game_stats"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    player_name = Column(String(100), nullable=False)
+    player_id = Column(Integer)
+    team = Column(String(10))
+    game_id = Column(String(20), nullable=False)
+    game_date = Column(DateTime, nullable=False)
+    matchup = Column(String(20))
+    wl = Column(String(1))
+    min = Column(Float)
+    pts = Column(Integer)
+    reb = Column(Integer)
+    ast = Column(Integer)
+    stl = Column(Integer)
+    blk = Column(Integer)
+    tov = Column(Integer)
+    pf = Column(Integer)
+    fgm = Column(Integer)
+    fga = Column(Integer)
+    fg_pct = Column(Float)
+    fg3m = Column(Integer)
+    fg3a = Column(Integer)
+    fg3_pct = Column(Float)
+    ftm = Column(Integer)
+    fta = Column(Integer)
+    ft_pct = Column(Float)
+    oreb = Column(Integer)
+    dreb = Column(Integer)
+    plus_minus = Column(Float)
+    season = Column(String(10))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<PlayerGameStats(player={self.player_name}, game={self.game_id}, pts={self.pts})>"
+
+
 class Reporter(Base):
     """Metadata about injury reporters and their reliability."""
 
