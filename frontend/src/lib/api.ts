@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = "";  // calls same origin — Next.js rewrites proxy to the backend
 
 export interface TopFactor {
   feature: string;
