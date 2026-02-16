@@ -1,7 +1,7 @@
 """Daily batch prediction pipeline.
 
 Reuses the exact feature engineering from models/injury_risk.py, loads the
-trained stacking ensemble, and writes predictions to the daily_predictions table.
+trained LightGBM model, and writes predictions to the daily_predictions table.
 
 Run: conda run -n nba python -m pipeline.daily_predictions
 """
@@ -37,38 +37,32 @@ RECENCY_DAYS = 14  # only predict for players with a game in last N days
 
 
 def load_models():
-    """Load stacking ensemble and scaler from saved pickles."""
-    stacking_path = SAVED_DIR / "stacking.pkl"
+    """Load LightGBM model and scaler from saved pickles."""
+    lgbm_path = SAVED_DIR / "lightgbm.pkl"
     lr_path = SAVED_DIR / "logistic_regression.pkl"
 
-    if not stacking_path.exists() or not lr_path.exists():
+    if not lgbm_path.exists() or not lr_path.exists():
         raise FileNotFoundError(
             f"Model pickles not found in {SAVED_DIR}. "
             "Run: conda run -n nba python main.py --injury-risk"
         )
 
-    with open(stacking_path, "rb") as f:
-        stacking = pickle.load(f)
+    with open(lgbm_path, "rb") as f:
+        lgbm_data = pickle.load(f)
 
     with open(lr_path, "rb") as f:
         lr_data = pickle.load(f)
 
     scaler = lr_data["scaler"]
-    feature_cols = stacking["features"]
+    feature_cols = lgbm_data["features"]
 
-    return stacking, scaler, feature_cols
+    return lgbm_data, scaler, feature_cols
 
 
-def predict_stacking(stacking, scaler, X):
-    """Scale features and generate stacking ensemble predictions."""
+def predict_lgbm(lgbm_data, scaler, X):
+    """Scale features and generate LightGBM predictions."""
     X_scaled = scaler.transform(X)
-
-    lr_prob = stacking["calibrated_lr"].predict_proba(X_scaled)[:, 1]
-    xgb_prob = stacking["calibrated_xgb"].predict_proba(X_scaled)[:, 1]
-    lgbm_prob = stacking["calibrated_lgbm"].predict_proba(X_scaled)[:, 1]
-
-    meta_features = np.column_stack([lr_prob, xgb_prob, lgbm_prob])
-    return stacking["meta_model"].predict_proba(meta_features)[:, 1]
+    return lgbm_data["calibrated_model"].predict_proba(X_scaled)[:, 1]
 
 
 def assign_tiers(risk_scores):
@@ -120,18 +114,17 @@ def compute_top_factors(feature_vector, feature_cols, population_means, populati
     return factors[:top_n]
 
 
-def get_global_importances(stacking):
-    """Extract global feature importances from the LightGBM base model."""
-    cal_lgbm = stacking["calibrated_lgbm"]
+def get_global_importances(lgbm_data):
+    """Extract global feature importances from the LightGBM model."""
+    cal_model = lgbm_data["calibrated_model"]
 
-    # CalibratedClassifierCV(FrozenEstimator(model)) — unwrap to get LGBMClassifier
-    # cal_lgbm.estimator -> FrozenEstimator, .estimator -> LGBMClassifier
-    base = cal_lgbm.estimator
+    # CalibratedClassifierCV wraps the estimator — unwrap to get LGBMClassifier
+    base = cal_model.estimator
     while hasattr(base, "estimator"):
         base = base.estimator
 
     importances = base.feature_importances_
-    feature_cols = stacking["features"]
+    feature_cols = lgbm_data["features"]
     total = importances.sum()
     if total > 0:
         importances = importances / total  # normalize to sum to 1
@@ -151,8 +144,8 @@ def run(prediction_date=None):
 
     # 1. Load models
     logger.info("Loading models...")
-    stacking, scaler, feature_cols = load_models()
-    threshold = stacking.get("threshold", 0.07)
+    lgbm_data, scaler, feature_cols = load_models()
+    threshold = lgbm_data.get("threshold", 0.07)
     logger.info(f"  Features: {len(feature_cols)}, threshold: {threshold}")
 
     # 2. Run full feature engineering pipeline (same code path as training)
@@ -180,12 +173,12 @@ def run(prediction_date=None):
 
     # 6. Predict
     logger.info("Generating predictions...")
-    risk_scores = predict_stacking(stacking, scaler, X)
+    risk_scores = predict_lgbm(lgbm_data, scaler, X)
     percentiles, tiers = assign_tiers(risk_scores)
 
     # 7. Compute per-prediction explanations
     logger.info("Computing per-prediction explanations...")
-    global_importances = get_global_importances(stacking)
+    global_importances = get_global_importances(lgbm_data)
 
     # Population stats from the full engineered dataset (not just latest)
     pop_X = df[feature_cols].values.astype(float)
@@ -244,7 +237,7 @@ def run(prediction_date=None):
                     "risk_tier": str(tiers[i]),
                     "top_factors": json.dumps(top_factors),
                     "feature_vector": json.dumps(feature_dict),
-                    "model_version": "stacking_v1",
+                    "model_version": "lightgbm_v1",
                 },
             )
             inserted += 1

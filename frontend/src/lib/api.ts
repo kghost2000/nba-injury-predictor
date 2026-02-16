@@ -94,3 +94,57 @@ export async function getPerformanceHistory(
 ): Promise<BatchMetric[]> {
   return fetchAPI(`/api/performance/history?days=${days}`);
 }
+
+export const featureLabels: Record<string, string> = {
+  minutes_over_season_avg: "Minutes Over Avg",
+  minutes_over_L10: "Minutes Over L10",
+  fga_over_season_avg: "FGA Over Avg",
+  fga_over_L10: "FGA Over L10",
+  cumulative_excess_minutes_L7: "Excess Minutes (7d)",
+  cumulative_excess_fga_L7: "Excess FGA (7d)",
+  minutes_spike_7d: "Minutes Spike (7d)",
+  games_over_35min_L10: "35+ Min Games (L10)",
+  minutes_ewma_deviation: "Minutes EWMA Dev",
+  fga_per_100: "FGA per 100",
+  fga_per_100_over_avg: "FGA/100 Over Avg",
+  usage_rate: "Usage Rate",
+  usage_over_avg: "Usage Over Avg",
+  minutes_share: "Minutes Share",
+  is_back_to_back: "Back-to-Back",
+  games_in_last_7d: "Games in 7 Days",
+  games_in_last_14d: "Games in 14 Days",
+  days_since_last_game: "Days Since Last Game",
+  consecutive_heavy_games: "Consec. Heavy Games",
+  games_into_season: "Games Into Season",
+  age: "Age",
+  player_height_inches: "Height",
+  age_minutes_interaction: "Age x Minutes",
+  season_reb_per_game: "Rebounds/Game",
+  season_ast_per_game: "Assists/Game",
+  season_ast_pct: "Assist %",
+  age_squared: "Age Squared",
+  age_over_30: "Age Over 30",
+  prior_injury_reports_career: "Career Injuries",
+  prior_injury_reports_365d: "Injuries (1yr)",
+  days_since_last_injury: "Days Since Injury",
+  had_recent_injury_30d: "Recent Injury (30d)",
+  back_to_back: "Back-to-Back",
+  injury_history_score: "Injury History",
+  bmi_load_factor: "BMI Load Factor",
+  rest_days_last_14: "Rest Days (14d)",
+  age_factor: "Age Factor",
+  usage_rate_delta: "Usage Rate Delta",
+  games_last_7_days: "Games in 7 Days",
+  minutes_over_season_avg_zscore: "Minutes Over Avg (Z)",
+};
+
+export function formatFeatureName(name: string): string {
+  if (featureLabels[name]) return featureLabels[name];
+  return name
+    .replace(/_/g, " ")
+    .replace(/\bL(\d+)\b/g, "last $1")
+    .replace(/\b7d\b/g, "7-day")
+    .replace(/\b14d\b/g, "14-day")
+    .replace(/\b30d\b/g, "30-day")
+    .replace(/\b365d\b/g, "1-year");
+}

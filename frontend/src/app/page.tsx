@@ -1,120 +1,131 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { getTodayPredictions, type Prediction } from "@/lib/api";
-import PredictionCard from "@/components/PredictionCard";
+import { useState } from "react";
+import { Activity, BarChart3, Search, Clock, Cpu } from "lucide-react";
+import TodaysPredictions from "@/components/dashboard/TodaysPredictions";
+import ModelPerformance from "@/components/dashboard/ModelPerformance";
+import PlayerLookup from "@/components/dashboard/PlayerLookup";
+
+const tabs = [
+  { id: "today", label: "Today's Predictions", icon: Activity },
+  { id: "performance", label: "Model Performance", icon: BarChart3 },
+  { id: "lookup", label: "Player Lookup", icon: Search },
+] as const;
+
+type TabId = (typeof tabs)[number]["id"];
 
 export default function Home() {
-  return (
-    <Suspense fallback={<div className="text-center py-12 text-gray-500">Loading...</div>}>
-      <HomeContent />
-    </Suspense>
-  );
-}
-
-function HomeContent() {
-  const searchParams = useSearchParams();
-  const tier = searchParams.get("tier") || undefined;
-  const [predictions, setPredictions] = useState<Prediction[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    getTodayPredictions(tier)
-      .then(setPredictions)
-      .catch(() => setPredictions([]))
-      .finally(() => setLoading(false));
-  }, [tier]);
-
-  const highRisk = predictions.filter((p) => p.risk_tier === "high");
-  const mediumRisk = predictions.filter((p) => p.risk_tier === "medium");
-  const lowRisk = predictions.filter((p) => p.risk_tier === "low");
-
-  if (loading) {
-    return <div className="text-center py-12 text-gray-500">Loading predictions...</div>;
-  }
+  const [activeTab, setActiveTab] = useState<TabId>("today");
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white mb-1">
-          Today&apos;s Injury Risk Predictions
-        </h1>
-        <p className="text-sm text-gray-400">
-          {predictions.length} players evaluated
-          {predictions.length > 0 &&
-            ` | ${predictions[0].prediction_date}`}
-        </p>
-      </div>
-
-      {/* Tier filter tabs */}
-      <div className="flex gap-2 mb-6">
-        {[
-          { label: "All", value: "" },
-          { label: `High (${highRisk.length})`, value: "high" },
-          { label: `Medium (${mediumRisk.length})`, value: "medium" },
-          { label: `Low (${lowRisk.length})`, value: "low" },
-        ].map((tab) => (
-          <a
-            key={tab.value}
-            href={tab.value ? `/?tier=${tab.value}` : "/"}
-            className={`px-3 py-1.5 rounded text-sm transition ${
-              (tier || "") === tab.value
-                ? "bg-blue-600 text-white"
-                : "bg-gray-800 text-gray-400 hover:text-white"
-            }`}
-          >
-            {tab.label}
-          </a>
-        ))}
-      </div>
-
-      {predictions.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
-          No predictions available. Run the daily prediction pipeline first.
+    <div className="min-h-screen bg-background court-pattern">
+      {/* Header */}
+      <header className="border-b border-border/50 bg-card/40 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Activity className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h1 className="font-display font-bold text-xl text-foreground tracking-tight">
+                  NBA Injury Predictor
+                </h1>
+                <p className="text-xs text-muted-foreground">
+                  Machine learning-powered injury risk assessment
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Clock className="w-3 h-3" /> Daily predictions
+              </span>
+              <span className="px-2 py-1 rounded-md bg-secondary font-mono text-[11px] flex items-center gap-1.5">
+                <Cpu className="w-3 h-3" /> LightGBM v1.0
+              </span>
+              <span className="px-2 py-1 rounded-md bg-primary/10 text-primary font-mono text-[11px]">
+                AUC 0.738
+              </span>
+            </div>
+          </div>
         </div>
-      ) : (
-        <>
-          {(!tier || tier === "high") && highRisk.length > 0 && (
-            <section className="mb-8">
-              <h2 className="text-lg font-semibold text-red-400 mb-3">
-                High Risk ({highRisk.length})
-              </h2>
-              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                {highRisk.map((p) => (
-                  <PredictionCard key={p.player_id} pred={p} />
-                ))}
-              </div>
-            </section>
-          )}
+      </header>
 
-          {(!tier || tier === "medium") && mediumRisk.length > 0 && (
-            <section className="mb-8">
-              <h2 className="text-lg font-semibold text-yellow-400 mb-3">
-                Medium Risk ({mediumRisk.length})
-              </h2>
-              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                {mediumRisk.map((p) => (
-                  <PredictionCard key={p.player_id} pred={p} />
-                ))}
-              </div>
-            </section>
-          )}
+      {/* Tabs */}
+      <div className="border-b border-border/50 bg-card/20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <nav className="flex gap-1">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === tab.id
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span className="hidden sm:inline">{tab.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      </div>
 
-          {tier === "low" && lowRisk.length > 0 && (
-            <section className="mb-8">
-              <h2 className="text-lg font-semibold text-green-400 mb-3">
-                Low Risk ({lowRisk.length})
-              </h2>
-              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                {lowRisk.map((p) => (
-                  <PredictionCard key={p.player_id} pred={p} />
-                ))}
-              </div>
-            </section>
-          )}
-        </>
-      )}
+      {/* Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+        {activeTab === "today" && (
+          <div className="mb-6">
+            <h2 className="font-display font-bold text-2xl text-foreground">
+              {new Date().toLocaleDateString("en-US", {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Showing injury risk predictions for today&apos;s and tomorrow&apos;s games
+            </p>
+          </div>
+        )}
+        {activeTab === "performance" && (
+          <div className="mb-6">
+            <h2 className="font-display font-bold text-2xl text-foreground">
+              Model Performance
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Last 30 days &middot; LightGBM v1.0
+            </p>
+          </div>
+        )}
+        {activeTab === "lookup" && (
+          <div className="mb-6">
+            <h2 className="font-display font-bold text-2xl text-foreground">
+              Player Lookup
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Search for any player to view their risk history
+            </p>
+          </div>
+        )}
+
+        {activeTab === "today" && <TodaysPredictions />}
+        {activeTab === "performance" && <ModelPerformance />}
+        {activeTab === "lookup" && <PlayerLookup />}
+      </main>
+
+      {/* Footer */}
+      <footer className="border-t border-border/50 py-6 mt-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span>Powered by LightGBM &middot; Built by Andy</span>
+          <span className="font-mono">Portfolio Project</span>
+        </div>
+      </footer>
     </div>
   );
 }
